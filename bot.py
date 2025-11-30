@@ -5,6 +5,7 @@ from discord.ext import commands
 import openrouter
 from dotenv import load_dotenv
 import base64
+import logging
 
 # Load environment variables
 load_dotenv()
@@ -13,6 +14,10 @@ load_dotenv()
 client = openrouter.OpenRouter(
     api_key=os.getenv('OPENROUTER_API_KEY')
 )
+
+# Logging setup
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 # Bot setup
 intents = discord.Intents.default()
@@ -24,43 +29,43 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 async def explain_image_context(interaction: discord.Interaction, message: discord.Message):
     """Explain images using AI (right-click on a message)"""
     
-    print(f"Context menu triggered by {interaction.user} on message {message.id}")
+    logger.info(f"Context menu triggered by {interaction.user} on message {message.id}")
     
     try:
         # Find all image attachments in the message
         images = []
         for i, attachment in enumerate(message.attachments):
-            print(f"Attachment {i}: {attachment.filename}, content_type: {attachment.content_type}")
+            logger.info(f"Attachment {i}: {attachment.filename}, content_type: {attachment.content_type}")
             if attachment.content_type and attachment.content_type.startswith('image/'):
                 images.append(attachment)
         
         if not images:
-            print("Error: No images found in message")
+            logger.error("Error: No images found in message")
             await interaction.response.send_message("This message doesn't contain any images.", ephemeral=True)
             return
         
-        print(f"Found {len(images)} image(s)")
+        logger.info(f"Found {len(images)} image(s)")
         
         # Defer the response since this might take a while
         await interaction.response.defer()
-        print("Response deferred")
+        logger.info("Response deferred")
         
         explanations = []
         
         # Process each image
         for idx, image in enumerate(images):
-            print(f"Processing image {idx + 1}/{len(images)}: {image.filename}, size: {image.size}")
+            logger.info(f"Processing image {idx + 1}/{len(images)}: {image.filename}, size: {image.size}")
             
             try:
                 # Download the image
                 image_data = await image.read()
-                print(f"Downloaded {len(image_data)} bytes of image data")
+                logger.info(f"Downloaded {len(image_data)} bytes of image data")
                 
                 # Convert image to base64
                 base64_image = base64.b64encode(image_data).decode('utf-8')
                 
                 # Prepare the message for OpenRouter
-                print(f"Sending request to OpenRouter for image {idx + 1}...")
+                logger.info(f"Sending request to OpenRouter for image {idx + 1}...")
                 response = client.chat.send(
                     model="anthropic/claude-opus-4.5",
                     messages=[
@@ -84,7 +89,7 @@ async def explain_image_context(interaction: discord.Interaction, message: disco
                 )
                 
                 explanation = response.choices[0].message.content
-                print(f"Received response for image {idx + 1}")
+                logger.info(f"Received response for image {idx + 1}")
                 
                 # Create an embed for this image
                 embed = discord.Embed(
@@ -98,7 +103,7 @@ async def explain_image_context(interaction: discord.Interaction, message: disco
                 explanations.append(embed)
                 
             except Exception as e:
-                print(f"Error processing image {idx + 1}: {e}")
+                logger.error(f"Error processing image {idx + 1}: {e}")
                 # Create an error embed for this image
                 error_embed = discord.Embed(
                     title=f"❌ Image {idx + 1} Error",
@@ -109,47 +114,47 @@ async def explain_image_context(interaction: discord.Interaction, message: disco
                 explanations.append(error_embed)
         
         # Send all explanations
-        print(f"Sending {len(explanations)} embed(s)")
+        logger.info(f"Sending {len(explanations)} embed(s)")
         if len(explanations) == 1:
             await interaction.followup.send(embed=explanations[0])
         else:
             # Send multiple embeds in one message
             await interaction.followup.send(embeds=explanations)
         
-        print("Successfully sent response(s)")
+        logger.info("Successfully sent response(s)")
             
     except Exception as e:
-        print(f"Unexpected error in explain command: {e}")
+        logger.error(f"Unexpected error in explain command: {e}")
         import traceback
         traceback.print_exc()
         try:
             await interaction.response.send_message(f"An unexpected error occurred: {str(e)}", ephemeral=True)
         except:
-            print("Could not send error response to user")
+            logger.error("Could not send error response to user")
 
 @bot.event
 async def on_ready():
-    print(f'{bot.user} has connected to Discord!')
-    print(f'Bot is in {len(bot.guilds)} servers')
+    logger.info(f'{bot.user} has connected to Discord!')
+    logger.info(f'Bot is in {len(bot.guilds)} servers')
     
     # Sync commands
     try:
         synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
+        logger.info(f"Synced {len(synced)} command(s)")
     except Exception as e:
-        print(f"Failed to sync commands: {e}")
+        logger.error(f"Failed to sync commands: {e}")
 
 @bot.event
 async def on_disconnect():
-    print("Bot disconnected from Discord")
+    logger.info("Bot disconnected from Discord")
 
 @bot.event
 async def on_resumed():
-    print("Bot reconnected to Discord")
+    logger.info("Bot reconnected to Discord")
 
 @bot.event
 async def on_error(event, *args, **kwargs):
-    print(f"Error in {event}: {args} {kwargs}")
+    logger.error(f"Error in {event}: {args} {kwargs}")
     import traceback
     traceback.print_exc()
 
@@ -160,7 +165,7 @@ async def on_command_error(ctx, error):
     elif isinstance(error, commands.MissingRequiredArgument):
         await ctx.send("Please provide all required arguments.")
     else:
-        await ctx.send(f"An error occurred: {str(error)}")
+        logger.error(f"An error occurred: {str(error)}")
 
 async def setup(bot):
     # Add the context menu to the bot tree
@@ -170,7 +175,7 @@ def main():
     """Main entry point for the bot"""
     TOKEN = os.getenv('DISCORD_TOKEN')
     if not TOKEN:
-        print("Error: DISCORD_TOKEN not found in environment variables!")
+        logger.error("Error: DISCORD_TOKEN not found in environment variables!")
         exit(1)
     
     async def run_bot():
