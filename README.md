@@ -1,4 +1,4 @@
-# Discord Image Explainer Bot
+# image-captioner
 
 A Discord bot that explains images uploaded by users.
 
