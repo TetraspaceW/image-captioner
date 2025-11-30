@@ -1,3 +1,4 @@
+import http
 import os
 import discord
 from discord import app_commands
@@ -85,7 +86,11 @@ async def explain_image_context(interaction: discord.Interaction, message: disco
                             ]
                         }
                     ],
-                    max_tokens=500
+                    max_tokens=500,
+                    http_headers={
+                        "HTTP-Referer": "https://github.com/TetraspaceW/image-captioner",
+                        "X-Title": "image-captioner"
+                    }
                 )
                 
                 explanation = response.choices[0].message.content
