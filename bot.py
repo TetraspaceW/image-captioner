@@ -61,8 +61,8 @@ async def on_message(message):
     if not images:
         return
 
-    # Wait a second to make sure the message isn't instantly deleted
-    await asyncio.sleep(2.5)
+    # Wait two seconds to make sure the message isn't instantly deleted
+    await asyncio.sleep(2)
     try:
         await message.channel.fetch_message(message.id)
     except discord.NotFound:
@@ -73,76 +73,77 @@ async def on_message(message):
         f"Found {len(images)} image(s) in message {message.id} from {message.author}"
     )
 
-    explanations = []
+    async with message.channel.typing():
+        explanations = []
 
-    for idx, image in enumerate(images):
-        logger.info(
-            f"Processing image {idx + 1}/{len(images)}: {image.filename}, size: {image.size}"
-        )
-
-        try:
-            # If the image has alt text, use it directly
-            if image.description:
-                logger.info(f"Image {idx + 1} has alt text, using that")
-                explanations.append(image.description)
-                continue
-
-            # Download the image
-            image_data = await image.read()
-            logger.info(f"Downloaded {len(image_data)} bytes of image data")
-
-            # Convert image to base64
-            base64_image = base64.b64encode(image_data).decode("utf-8")
-
-            # Send to OpenRouter for captioning
-            logger.info(f"Sending request to OpenRouter for image {idx + 1}...")
-            response = client.chat.send(
-                model="anthropic/claude-sonnet-4.6",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "Hi! The user is visually impaired or a language model and wants you to give a caption that fully explains what's in this image. Make it plain and factual. Don't use special formatting.",
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{image.content_type};base64,{base64_image}"
-                                },
-                            },
-                        ],
-                    }
-                ],
-                max_tokens=500,
-                http_headers={
-                    "HTTP-Referer": "https://github.com/TetraspaceW/image-captioner",
-                    "X-Title": "image-captioner",
-                },
+        for idx, image in enumerate(images):
+            logger.info(
+                f"Processing image {idx + 1}/{len(images)}: {image.filename}, size: {image.size}"
             )
 
-            explanation = response.choices[0].message.content
-            logger.info(f"Received response for image {idx + 1}")
-            explanations.append(explanation)
+            try:
+                # If the image has alt text, use it directly
+                if image.description:
+                    logger.info(f"Image {idx + 1} has alt text, using that")
+                    explanations.append(image.description)
+                    continue
 
+                # Download the image
+                image_data = await image.read()
+                logger.info(f"Downloaded {len(image_data)} bytes of image data")
+
+                # Convert image to base64
+                base64_image = base64.b64encode(image_data).decode("utf-8")
+
+                # Send to OpenRouter for captioning
+                logger.info(f"Sending request to OpenRouter for image {idx + 1}...")
+                response = client.chat.send(
+                    model="anthropic/claude-sonnet-4.6",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Hi! The user is visually impaired or a language model and wants you to give a caption that fully explains what's in this image. Make it plain and factual. Don't use special formatting.",
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{image.content_type};base64,{base64_image}"
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                    max_tokens=500,
+                    http_headers={
+                        "HTTP-Referer": "https://github.com/TetraspaceW/image-captioner",
+                        "X-Title": "image-captioner",
+                    },
+                )
+
+                explanation = response.choices[0].message.content
+                logger.info(f"Received response for image {idx + 1}")
+                explanations.append(explanation)
+
+            except Exception as e:
+                logger.error(f"Error processing image {idx + 1}: {e}")
+                traceback.print_exc()
+                explanations.append(f"[Failed to analyze {image.filename}: {e}]")
+
+        # Send as a plain text reply
+        reply = "\n\n".join(explanations)
+        # Discord has a 2000 char limit
+        if len(reply) > 2000:
+            reply = reply[:1997] + "..."
+
+        try:
+            await message.reply("Image caption: " + reply)
+            logger.info("Successfully sent reply")
         except Exception as e:
-            logger.error(f"Error processing image {idx + 1}: {e}")
+            logger.error(f"Failed to send reply: {e}")
             traceback.print_exc()
-            explanations.append(f"[Failed to analyze {image.filename}: {e}]")
-
-    # Send as a plain text reply
-    reply = "\n\n".join(explanations)
-    # Discord has a 2000 char limit
-    if len(reply) > 2000:
-        reply = reply[:1997] + "..."
-
-    try:
-        await message.reply("Image caption:\n" + reply)
-        logger.info("Successfully sent reply")
-    except Exception as e:
-        logger.error(f"Failed to send reply: {e}")
-        traceback.print_exc()
 
 
 def main():
