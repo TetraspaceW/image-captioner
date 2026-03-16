@@ -1,4 +1,5 @@
 import os
+import asyncio
 import discord
 import openrouter
 from dotenv import load_dotenv
@@ -60,6 +61,14 @@ async def on_message(message):
     if not images:
         return
 
+    # Wait a second to make sure the message isn't instantly deleted
+    await asyncio.sleep(2.5)
+    try:
+        await message.channel.fetch_message(message.id)
+    except discord.NotFound:
+        logger.info(f"Message {message.id} was deleted before processing")
+        return
+
     logger.info(
         f"Found {len(images)} image(s) in message {message.id} from {message.author}"
     )
@@ -72,6 +81,12 @@ async def on_message(message):
         )
 
         try:
+            # If the image has alt text, use it directly
+            if image.description:
+                logger.info(f"Image {idx + 1} has alt text, using that")
+                explanations.append(image.description)
+                continue
+
             # Download the image
             image_data = await image.read()
             logger.info(f"Downloaded {len(image_data)} bytes of image data")
@@ -82,14 +97,14 @@ async def on_message(message):
             # Send to OpenRouter for captioning
             logger.info(f"Sending request to OpenRouter for image {idx + 1}...")
             response = client.chat.send(
-                model="anthropic/claude-opus-4.5",
+                model="anthropic/claude-sonnet-4.6",
                 messages=[
                     {
                         "role": "user",
                         "content": [
                             {
                                 "type": "text",
-                                "text": "Hi! The user is visually impaired and wants you to give a caption that fully explains what's in this image. Make it plain and factual. Don't use special formatting.",
+                                "text": "Hi! The user is visually impaired or a language model and wants you to give a caption that fully explains what's in this image. Make it plain and factual. Don't use special formatting.",
                             },
                             {
                                 "type": "image_url",
@@ -123,7 +138,7 @@ async def on_message(message):
         reply = reply[:1997] + "..."
 
     try:
-        await message.reply(reply)
+        await message.reply("Image caption:\n" + reply)
         logger.info("Successfully sent reply")
     except Exception as e:
         logger.error(f"Failed to send reply: {e}")
