@@ -28,6 +28,11 @@ bot = discord.Client(intents=intents)
 async def on_ready():
     logger.info(f"{bot.user} has connected to Discord!")
     logger.info(f"Bot is in {len(bot.guilds)} servers")
+    try:
+        await bot.http.bulk_upsert_global_commands(bot.user.id, payload=[])
+        logger.info("Successfully deleted all application commands.")
+    except Exception as e:
+        logger.error(f"Failed to delete application commands: {e}")
 
 
 @bot.event
