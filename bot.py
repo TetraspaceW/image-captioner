@@ -6,10 +6,11 @@ import openrouter.errors
 from dotenv import load_dotenv
 import aiohttp
 import base64
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import logging
 import traceback
 
-MAX_IMAGE_DIM = 1024
+MAX_IMAGE_DIM = 720
 
 # Load environment variables
 load_dotenv()
@@ -127,8 +128,22 @@ async def on_message(message):
                     continue
 
                 # Download a low-res version of the image from Discord's CDN
-                resized_url = (
-                    f"{image.proxy_url}?width={MAX_IMAGE_DIM}&height={MAX_IMAGE_DIM}"
+                # Scale proportionally to fit within MAX_IMAGE_DIM
+                if image.width and image.height:
+                    scale = min(
+                        MAX_IMAGE_DIM / image.width, MAX_IMAGE_DIM / image.height, 1.0
+                    )
+                    target_width = int(image.width * scale)
+                    target_height = int(image.height * scale)
+                else:
+                    target_width = MAX_IMAGE_DIM
+                    target_height = MAX_IMAGE_DIM
+                parsed = urlparse(image.proxy_url)
+                params = parse_qs(parsed.query)
+                params["width"] = [str(target_width)]
+                params["height"] = [str(target_height)]
+                resized_url = urlunparse(
+                    parsed._replace(query=urlencode(params, doseq=True))
                 )
                 async with aiohttp.ClientSession() as session:
                     async with session.get(resized_url) as resp:
