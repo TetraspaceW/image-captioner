@@ -95,6 +95,7 @@ async def caption_image(base64_image, media_type):
                         },
                     },
                 ],
+                "reasoning": {"effort": "minimal"},
             }
         ],
         max_tokens=500,
