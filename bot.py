@@ -95,10 +95,10 @@ async def caption_image(base64_image, media_type):
                         },
                     },
                 ],
-                "reasoning": {"effort": "minimal"},
             }
         ],
         max_tokens=500,
+        reasoning={"effort": "minimal"},
         http_headers={
             "HTTP-Referer": "https://github.com/TetraspaceW/image-captioner",
             "X-Title": "image-captioner",
@@ -156,7 +156,7 @@ async def caption_images_from_message(images):
                 f"Status code: {getattr(e, 'raw_response', None) and e.raw_response.status_code}"
             )
             logger.error(
-                f"Request params: model=anthropic/claude-sonnet-4.6, max_tokens=500, "
+                f"Request params: model=google/gemini-3.1-pro-preview, max_tokens=500, "
                 f"image_content_type={image.content_type}, image_size={image.size}, "
                 f"base64_length={len(base64_image)}"
             )
