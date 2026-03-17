@@ -77,6 +77,25 @@ async def on_error(event, *args, **kwargs):
     traceback.print_exc()
 
 
+def format_explanation(explanation: str):
+    lines = [line for line in explanation.split("\n") if line.strip()]
+    return "\n".join([f"-# > {line}" for line in lines])
+
+
+def build_reply(explanations: list[str]) -> str:
+    if len(explanations) == 1:
+        reply = "Image caption:\n" + format_explanation(explanations[0])
+    else:
+        parts = []
+        for i, exp in enumerate(explanations, 1):
+            parts.append(f"Image {i} caption:\n{format_explanation(exp)}")
+        reply = "\n\n".join(parts)
+    # Discord has a 2000 char limit
+    if len(reply) > 2000:
+        reply = reply[:1997] + "..."
+    return reply
+
+
 async def caption_image(base64_image, media_type):
     response = client.chat.send(
         model="google/gemini-3.1-pro-preview",
@@ -211,13 +230,10 @@ async def on_message(message):
             return
 
         # Send as a plain text reply
-        reply = "\n\n".join(explanations)
-        # Discord has a 2000 char limit
-        if len(reply) > 2000:
-            reply = reply[:1997] + "..."
+        reply = build_reply(explanations)
 
         try:
-            await message.reply("Image caption: " + reply)
+            await message.reply(reply)
             logger.info("Successfully sent reply")
         except Exception as e:
             logger.error(f"Failed to send reply: {e}")
@@ -287,12 +303,8 @@ async def describe_images(interaction: discord.Interaction, message: discord.Mes
         )
         return
 
-    reply = "\n\n".join(explanations)
-    # Discord has a 2000 char limit
-    if len(reply) > 2000:
-        reply = reply[:1997] + "..."
-
-    await interaction.followup.send("Image caption: " + reply)
+    reply = build_reply(explanations)
+    await interaction.followup.send(reply)
 
 
 def main():
