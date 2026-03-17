@@ -136,9 +136,9 @@ async def on_message(message):
                 try:
                     explanation = await caption_image(base64_image, media_type)
                 except openrouter.errors.OpenRouterError as e:
-                    if media_type == "image/webp":
+                    if media_type != "image/png":
                         logger.warning(
-                            f"Provider error with webp for image {idx + 1}, retrying as image/png: {e}"
+                            f"Provider error with {media_type} for image {idx + 1}, retrying as image/png: {e}"
                         )
                         explanation = await caption_image(base64_image, "image/png")
                     else:
