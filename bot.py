@@ -79,7 +79,7 @@ async def on_error(event, *args, **kwargs):
 
 async def caption_image(base64_image, media_type):
     response = client.chat.send(
-        model="anthropic/claude-sonnet-4.6",
+        model="google/gemini-3.1-pro-preview",
         messages=[
             {
                 "role": "user",
