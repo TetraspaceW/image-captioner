@@ -4,8 +4,6 @@ import discord
 import openrouter
 import openrouter.errors
 from dotenv import load_dotenv
-import aiohttp
-import base64
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import logging
 import traceback
@@ -55,7 +53,7 @@ async def on_error(event, *args, **kwargs):
     traceback.print_exc()
 
 
-async def caption_image(base64_image, media_type):
+async def caption_image(image_url):
     response = client.chat.send(
         model="anthropic/claude-sonnet-4.6",
         messages=[
@@ -68,9 +66,7 @@ async def caption_image(base64_image, media_type):
                     },
                     {
                         "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{media_type};base64,{base64_image}"
-                        },
+                        "image_url": {"url": image_url},
                     },
                 ],
             }
@@ -127,7 +123,7 @@ async def on_message(message):
                     explanations.append(image.description)
                     continue
 
-                # Download a low-res version of the image from Discord's CDN
+                # Build a resized CDN URL for the image
                 # Scale proportionally to fit within MAX_IMAGE_DIM
                 if image.width and image.height:
                     scale = min(
@@ -145,29 +141,10 @@ async def on_message(message):
                 resized_url = urlunparse(
                     parsed._replace(query=urlencode(params, doseq=True))
                 )
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(resized_url) as resp:
-                        image_data = await resp.read()
-                logger.info(
-                    f"Downloaded {len(image_data)} bytes of image data (resized)"
-                )
-
-                # Convert image to base64
-                base64_image = base64.b64encode(image_data).decode("utf-8")
 
                 # Send to OpenRouter for captioning
                 logger.info(f"Sending request to OpenRouter for image {idx + 1}...")
-                media_type = image.content_type
-                try:
-                    explanation = await caption_image(base64_image, media_type)
-                except openrouter.errors.OpenRouterError as e:
-                    if media_type == "image/webp":
-                        logger.warning(
-                            f"Provider error with webp for image {idx + 1}, retrying as image/png: {e}"
-                        )
-                        explanation = await caption_image(base64_image, "image/png")
-                    else:
-                        raise
+                explanation = await caption_image(resized_url)
 
                 logger.info(f"Received response for image {idx + 1}")
                 explanations.append(explanation)
@@ -181,7 +158,7 @@ async def on_message(message):
                 logger.error(
                     f"Request params: model=anthropic/claude-sonnet-4.6, max_tokens=500, "
                     f"image_content_type={image.content_type}, image_size={image.size}, "
-                    f"base64_length={len(base64_image)}"
+                    f"resized_url={resized_url}"
                 )
                 traceback.print_exc()
                 await message.add_reaction("\u26a0\ufe0f")
