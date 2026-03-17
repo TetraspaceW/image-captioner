@@ -130,6 +130,10 @@ async def on_message(message):
 
             except openrouter.errors.OpenRouterError as e:
                 logger.error(f"Provider error for image {idx + 1}: {e}")
+                logger.error(f"Error body: {getattr(e, 'body', None)}")
+                logger.error(
+                    f"Status code: {getattr(e, 'raw_response', None) and e.raw_response.status_code}"
+                )
                 logger.error(
                     f"Request params: model=anthropic/claude-sonnet-4.6, max_tokens=500, "
                     f"image_content_type={image.content_type}, image_size={image.size}, "
