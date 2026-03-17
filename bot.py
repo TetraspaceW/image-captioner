@@ -131,7 +131,9 @@ async def on_message(message):
             except openrouter.errors.OpenRouterError as e:
                 logger.error(f"Provider error for image {idx + 1}: {e}")
                 logger.error(
-                    f"Request: message={message.id}, image={image.filename}, size={image.size}"
+                    f"Request params: model=anthropic/claude-sonnet-4.6, max_tokens=500, "
+                    f"image_content_type={image.content_type}, image_size={image.size}, "
+                    f"base64_length={len(base64_image)}"
                 )
                 traceback.print_exc()
                 await message.add_reaction("\u26a0\ufe0f")
