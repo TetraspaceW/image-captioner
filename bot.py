@@ -4,9 +4,12 @@ import discord
 import openrouter
 import openrouter.errors
 from dotenv import load_dotenv
+import aiohttp
 import base64
 import logging
 import traceback
+
+MAX_IMAGE_DIM = 1024
 
 # Load environment variables
 load_dotenv()
@@ -123,9 +126,16 @@ async def on_message(message):
                     explanations.append(image.description)
                     continue
 
-                # Download the image
-                image_data = await image.read()
-                logger.info(f"Downloaded {len(image_data)} bytes of image data")
+                # Download a low-res version of the image from Discord's CDN
+                resized_url = (
+                    f"{image.proxy_url}?width={MAX_IMAGE_DIM}&height={MAX_IMAGE_DIM}"
+                )
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(resized_url) as resp:
+                        image_data = await resp.read()
+                logger.info(
+                    f"Downloaded {len(image_data)} bytes of image data (resized)"
+                )
 
                 # Convert image to base64
                 base64_image = base64.b64encode(image_data).decode("utf-8")
