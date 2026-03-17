@@ -2,6 +2,7 @@ import os
 import asyncio
 import discord
 import openrouter
+import openrouter.errors
 from dotenv import load_dotenv
 import base64
 import logging
@@ -127,10 +128,20 @@ async def on_message(message):
                 logger.info(f"Received response for image {idx + 1}")
                 explanations.append(explanation)
 
+            except openrouter.errors.OpenRouterError as e:
+                logger.error(f"Provider error for image {idx + 1}: {e}")
+                logger.error(
+                    f"Request: message={message.id}, image={image.filename}, size={image.size}"
+                )
+                traceback.print_exc()
+                await message.add_reaction("\u26a0\ufe0f")
+                return
+
             except Exception as e:
                 logger.error(f"Error processing image {idx + 1}: {e}")
                 traceback.print_exc()
-                explanations.append(f"[Failed to analyze {image.filename}: {e}]")
+                await message.add_reaction("\u26a0\ufe0f")
+                return
 
         # Send as a plain text reply
         reply = "\n\n".join(explanations)
