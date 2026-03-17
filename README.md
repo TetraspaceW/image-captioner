@@ -8,7 +8,7 @@ A Discord bot that explains images uploaded by users.
 
 1. Python
 2. Discord Bot Token
-3. OpenAI API Key
+3. OpenRouter API Key
 
 ### Installation
 
@@ -24,7 +24,7 @@ A Discord bot that explains images uploaded by users.
 
    ```
    DISCORD_TOKEN=your_discord_bot_token_here
-   OPENAI_API_KEY=your_openai_api_key_here
+   OPENROUTER_API_KEY=your_openrouter_api_key_here
    ```
 
 ### Creating a Discord Bot
@@ -38,7 +38,7 @@ A Discord bot that explains images uploaded by users.
 ### Inviting the Bot to Your Server
 
 1. In the Discord Developer Portal, go to "Installation" → "Install Link"
-2. Copy the generated URL and use it to invite the bot to your server or add it to your user globally
+2. Copy the generated URL and use it to invite the bot to your server
 
 ### Running the Bot
 
@@ -47,10 +47,6 @@ Run with uv:
 ```bash
 uv run image-captioner
 ```
-
-## Usage
-
-Once the bot is running and invited to your server or added to your user globally, right click on an image and go to "More" → "Apps" → "Explain Image".
 
 ## Help
 
