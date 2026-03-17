@@ -46,6 +46,35 @@ async def on_error(event, *args, **kwargs):
     traceback.print_exc()
 
 
+async def caption_image(base64_image, media_type):
+    response = client.chat.send(
+        model="anthropic/claude-sonnet-4.6",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hi! The user is visually impaired or a language model and wants you to give a caption that fully explains what's in this image. Make it plain and factual. Don't use special formatting.",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{media_type};base64,{base64_image}"
+                        },
+                    },
+                ],
+            }
+        ],
+        max_tokens=500,
+        http_headers={
+            "HTTP-Referer": "https://github.com/TetraspaceW/image-captioner",
+            "X-Title": "image-captioner",
+        },
+    )
+    return response.choices[0].message.content
+
+
 @bot.event
 async def on_message(message):
     # Ignore messages from the bot itself
@@ -98,33 +127,18 @@ async def on_message(message):
 
                 # Send to OpenRouter for captioning
                 logger.info(f"Sending request to OpenRouter for image {idx + 1}...")
-                response = client.chat.send(
-                    model="anthropic/claude-sonnet-4.6",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Hi! The user is visually impaired or a language model and wants you to give a caption that fully explains what's in this image. Make it plain and factual. Don't use special formatting.",
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:{image.content_type};base64,{base64_image}"
-                                    },
-                                },
-                            ],
-                        }
-                    ],
-                    max_tokens=500,
-                    http_headers={
-                        "HTTP-Referer": "https://github.com/TetraspaceW/image-captioner",
-                        "X-Title": "image-captioner",
-                    },
-                )
+                media_type = image.content_type
+                try:
+                    explanation = await caption_image(base64_image, media_type)
+                except openrouter.errors.OpenRouterError as e:
+                    if media_type == "image/webp":
+                        logger.warning(
+                            f"Provider error with webp for image {idx + 1}, retrying as image/png: {e}"
+                        )
+                        explanation = await caption_image(base64_image, "image/png")
+                    else:
+                        raise
 
-                explanation = response.choices[0].message.content
                 logger.info(f"Received response for image {idx + 1}")
                 explanations.append(explanation)
 
