@@ -144,7 +144,7 @@ def collect_images(message: discord.Message) -> list[ImageSource]:
     for embed in message.embeds:
         if embed.image and embed.image.url:
             url = embed.image.url.lower()
-            if not any(urlsplit(url).path in IMAGE_EXTENSIONS):
+            if not any(urlsplit(url).path.endswith(ext) for ext in IMAGE_EXTENSIONS):
                 continue
             filename = urlsplit(url).path.split("/")[-1]
             images.append(EmbedImage(url, filename=filename))
