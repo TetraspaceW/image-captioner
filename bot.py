@@ -142,6 +142,7 @@ def collect_images(message: discord.Message) -> list[ImageSource]:
         if attachment.content_type and attachment.content_type.startswith("image/")
     ]
     for embed in message.embeds:
+        logger.info(f"Embed: type={embed.type}, content={embed.to_dict()}")
         if embed.image and embed.image.url:
             url = embed.image.url.lower()
             if not any(urlsplit(url).path.endswith(ext) for ext in IMAGE_EXTENSIONS):
