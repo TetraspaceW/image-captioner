@@ -144,14 +144,14 @@ def collect_images(message: discord.Message) -> list[ImageSource]:
     for embed in message.embeds:
         logger.info(f"Embed: type={embed.type}, content={embed.to_dict()}")
         if embed.image and embed.image.url:
-            url = embed.image.url.lower()
-            if not any(urlsplit(url).path.endswith(ext) for ext in IMAGE_EXTENSIONS):
+            url = embed.image.url
+            if not any(ext in urlsplit(url).path.lower() for ext in IMAGE_EXTENSIONS):
                 continue
             filename = urlsplit(url).path.split("/")[-1]
             images.append(EmbedImage(url, filename=filename))
         elif embed.thumbnail and embed.thumbnail.url:
-            url = embed.thumbnail.url.lower()
-            if not any(urlsplit(url).path.endswith(ext) for ext in IMAGE_EXTENSIONS):
+            url = embed.thumbnail.url
+            if not any(ext in urlsplit(url).path.lower() for ext in IMAGE_EXTENSIONS):
                 continue
             filename = urlsplit(url).path.split("/")[-1]
             images.append(EmbedImage(url, filename=filename))
