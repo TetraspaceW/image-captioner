@@ -6,9 +6,12 @@ from discord import app_commands
 import openrouter
 import openrouter.errors
 from dotenv import load_dotenv
+import aiohttp
 import base64
 import logging
 import traceback
+from typing import Protocol
+from urllib.parse import urlsplit
 
 # Load environment variables
 load_dotenv()
@@ -96,6 +99,64 @@ def build_reply(explanations: list[str]) -> str:
     return reply
 
 
+class ImageSource(Protocol):
+    filename: str
+    description: str | None
+    content_type: str
+    size: int
+
+    async def read(self) -> bytes: ...
+
+
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff")
+
+
+class EmbedImage:
+    """Lightweight wrapper around an embed image URL to match the Attachment interface."""
+
+    def __init__(self, url: str, filename: str = "embed_image"):
+        self.url = url
+        self.filename = filename
+        self.description = None
+        self.content_type = "image/png"
+        self.size = 0
+        self._data = None
+
+    async def read(self) -> bytes:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(self.url) as resp:
+                resp.raise_for_status()
+                ct = resp.content_type or ""
+                if ct.startswith("image/"):
+                    self.content_type = ct
+                self._data = await resp.read()
+                self.size = len(self._data)
+                return self._data
+
+
+def collect_images(message: discord.Message) -> list[ImageSource]:
+    """Collect image attachments and embed images from a message."""
+    images = [
+        attachment
+        for attachment in message.attachments
+        if attachment.content_type and attachment.content_type.startswith("image/")
+    ]
+    for embed in message.embeds:
+        if embed.image and embed.image.url:
+            url = embed.image.url.lower()
+            if not any(urlsplit(url).path in IMAGE_EXTENSIONS):
+                continue
+            filename = urlsplit(url).path.split("/")[-1]
+            images.append(EmbedImage(url, filename=filename))
+        elif embed.thumbnail and embed.thumbnail.url:
+            url = embed.thumbnail.url.lower()
+            if not any(urlsplit(url).path.endswith(ext) for ext in IMAGE_EXTENSIONS):
+                continue
+            filename = urlsplit(url).path.split("/")[-1]
+            images.append(EmbedImage(url, filename=filename))
+    return images
+
+
 async def caption_image(base64_image, media_type):
     response = client.chat.send(
         model="google/gemini-3.1-pro-preview",
@@ -126,7 +187,7 @@ async def caption_image(base64_image, media_type):
     return response.choices[0].message.content
 
 
-async def caption_images_from_message(images):
+async def caption_images_from_message(images: list[ImageSource]):
     """Caption a list of image attachments. Returns (explanations, error_occurred)."""
     explanations = []
 
@@ -200,22 +261,18 @@ async def on_message(message):
     if message.guild and get_guild_mode(message.guild.id) != "auto":
         return
 
-    # Find all image attachments in the message
-    images = [
-        attachment
-        for attachment in message.attachments
-        if attachment.content_type and attachment.content_type.startswith("image/")
-    ]
-
-    if not images:
-        return
-
-    # Wait two seconds to make sure the message isn't instantly deleted
+    # Wait two seconds for embeds to populate and to make sure the message isn't instantly deleted
     await asyncio.sleep(2)
     try:
-        await message.channel.fetch_message(message.id)
+        message = await message.channel.fetch_message(message.id)
     except discord.NotFound:
         logger.info(f"Message {message.id} was deleted before processing")
+        return
+
+    # Find all image attachments and embed images in the message
+    images = collect_images(message)
+
+    if not images:
         return
 
     logger.info(
@@ -277,15 +334,11 @@ async def captioner_config(
 
 @tree.context_menu(name="Describe Images")
 async def describe_images(interaction: discord.Interaction, message: discord.Message):
-    images = [
-        attachment
-        for attachment in message.attachments
-        if attachment.content_type and attachment.content_type.startswith("image/")
-    ]
+    images = collect_images(message)
 
     if not images:
         await interaction.response.send_message(
-            "This message has no image attachments.", ephemeral=True
+            "This message has no images.", ephemeral=True
         )
         return
 
