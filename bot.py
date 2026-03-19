@@ -134,14 +134,17 @@ class EmbedImage:
                 return self._data
 
 
-def collect_images(message: discord.Message) -> list[ImageSource]:
-    """Collect image attachments and embed images from a message."""
-    images = [
+def _collect_image_attachments(attachments) -> list[ImageSource]:
+    return [
         attachment
-        for attachment in message.attachments
+        for attachment in attachments
         if attachment.content_type and attachment.content_type.startswith("image/")
     ]
-    for embed in message.embeds:
+
+
+def _collect_embed_images(embeds) -> list[ImageSource]:
+    images: list[ImageSource] = []
+    for embed in embeds:
         logger.info(f"Embed: type={embed.type}, content={embed.to_dict()}")
         if embed.image and embed.image.url:
             url = embed.image.url
@@ -155,6 +158,17 @@ def collect_images(message: discord.Message) -> list[ImageSource]:
                 continue
             filename = urlsplit(url).path.split("/")[-1]
             images.append(EmbedImage(url, filename=filename))
+    return images
+
+
+def collect_images(message: discord.Message) -> list[ImageSource]:
+    """Collect image attachments and embed images from a message, including forwarded messages."""
+    images: list[ImageSource] = []
+    images.extend(_collect_image_attachments(message.attachments))
+    images.extend(_collect_embed_images(message.embeds))
+    for snapshot in message.message_snapshots:
+        images.extend(_collect_image_attachments(snapshot.attachments))
+        images.extend(_collect_embed_images(snapshot.embeds))
     return images
 
 
