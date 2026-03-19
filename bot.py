@@ -85,18 +85,18 @@ def format_explanation(explanation: str):
     return "\n".join([f"-# > {line}" for line in lines])
 
 
-def build_reply(explanations: list[str]) -> str:
-    if len(explanations) == 1:
-        reply = "Image caption:\n" + format_explanation(explanations[0])
-    else:
-        parts = []
-        for i, exp in enumerate(explanations, 1):
-            parts.append(f"Image {i} caption:\n{format_explanation(exp)}")
-        reply = "\n\n".join(parts)
-    # Discord has a 2000 char limit
-    if len(reply) > 2000:
-        reply = reply[:1997] + "..."
-    return reply
+def build_replies(explanations: list[str]) -> list[str]:
+    replies = []
+    for i, exp in enumerate(explanations, 1):
+        if len(explanations) == 1:
+            reply = "Image caption:\n" + format_explanation(exp)
+        else:
+            reply = f"Image {i} caption:\n" + format_explanation(exp)
+        # Discord has a 2000 char limit
+        if len(reply) > 2000:
+            reply = reply[:1997] + "..."
+        replies.append(reply)
+    return replies
 
 
 class ImageSource(Protocol):
@@ -287,11 +287,12 @@ async def on_message(message):
             await message.add_reaction("\u26a0\ufe0f")
             return
 
-        # Send as a plain text reply
-        reply = build_reply(explanations)
+        # Send as plain text replies
+        replies = build_replies(explanations)
 
         try:
-            await message.reply(reply)
+            for reply in replies:
+                await message.reply(reply)
             logger.info("Successfully sent reply")
         except Exception as e:
             logger.error(f"Failed to send reply: {e}")
@@ -357,8 +358,9 @@ async def describe_images(interaction: discord.Interaction, message: discord.Mes
         )
         return
 
-    reply = build_reply(explanations)
-    await interaction.followup.send(reply)
+    replies = build_replies(explanations)
+    for reply in replies:
+        await interaction.followup.send(reply)
 
 
 def main():
