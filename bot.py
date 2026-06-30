@@ -175,7 +175,7 @@ def collect_images(message: discord.Message) -> list[ImageSource]:
 async def caption_image(base64_image, media_type):
     response = await asyncio.to_thread(
         client.chat.send,
-        model="google/gemini-3-pro",
+        model="google/gemini-3.1-pro-preview",
         messages=[
             {
                 "role": "user",
