@@ -194,7 +194,7 @@ async def caption_image(base64_image, media_type):
             }
         ],
         max_tokens=500,
-        reasoning={"effort": "minimal"},
+        reasoning={"effort": "minimal", "exclude": "true"},
         http_headers={
             "HTTP-Referer": "https://github.com/TetraspaceW/image-captioner",
             "X-Title": "image-captioner",
