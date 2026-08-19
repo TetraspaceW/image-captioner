@@ -175,7 +175,7 @@ def collect_images(message: discord.Message) -> list[ImageSource]:
 async def caption_image(base64_image, media_type):
     response = await asyncio.to_thread(
         client.chat.send,
-        model="google/gemini-3.1-pro-preview",
+        model="google/gemini-3.6-flash",
         messages=[
             {
                 "role": "user",
@@ -252,7 +252,7 @@ async def caption_images_from_message(images: list[ImageSource]):
                 f"Status code: {getattr(e, 'raw_response', None) and e.raw_response.status_code}"
             )
             logger.error(
-                f"Request params: model=google/gemini-3.1-pro-preview, max_tokens=500, "
+                f"Request params: model=google/gemini-3.6-flash, max_tokens=500, "
                 f"image_content_type={image.content_type}, image_size={image.size}, "
                 f"base64_length={len(base64_image)}"
             )
