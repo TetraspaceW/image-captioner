@@ -20,6 +20,7 @@ load_dotenv()
 # Configure OpenRouter
 client = openrouter.OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
 CAPTION_MODEL = "~z-ai/glm-flash-latest"
+CAPTION_MAX_TOKENS = 500
 NON_RETRYABLE_STATUS_CODES = {401, 402, 403, 429}
 
 # Logging setup
@@ -235,6 +236,7 @@ async def caption_image(base64_image, media_type):
                 ],
             }
         ],
+        max_tokens=CAPTION_MAX_TOKENS,
         reasoning={"effort": "minimal", "exclude": True},
         http_headers={
             "HTTP-Referer": "https://github.com/TetraspaceW/image-captioner",
@@ -304,7 +306,7 @@ async def caption_images_from_message(images: list[ImageSource]):
                 f"Status code: {getattr(e, 'raw_response', None) and e.raw_response.status_code}"
             )
             logger.error(
-                f"Request params: model={CAPTION_MODEL}, "
+                f"Request params: model={CAPTION_MODEL}, max_tokens={CAPTION_MAX_TOKENS}, "
                 f"image_content_type={image.content_type}, image_size={image.size}, "
                 f"base64_length={len(base64_image)}"
             )
