@@ -26,7 +26,14 @@ logging.basicConfig(level=logging.INFO)
 # Bot setup
 intents = discord.Intents.default()
 intents.message_content = True
-bot = discord.Client(intents=intents)
+# Captions contain user-controlled text (alt text, text the model read from an image),
+# so never let them ping anyone except the author being replied to.
+bot = discord.Client(
+    intents=intents,
+    allowed_mentions=discord.AllowedMentions(
+        everyone=False, users=False, roles=False, replied_user=True
+    ),
+)
 tree = app_commands.CommandTree(bot)
 
 # Guild config
@@ -147,17 +154,20 @@ def _collect_embed_images(embeds) -> list[ImageSource]:
     for embed in embeds:
         logger.info(f"Embed: type={embed.type}, content={embed.to_dict()}")
         if embed.image and embed.image.url:
-            url = embed.image.url
-            if not any(ext in urlsplit(url).path.lower() for ext in IMAGE_EXTENSIONS):
-                continue
-            filename = urlsplit(url).path.split("/")[-1]
-            images.append(EmbedImage(url, filename=filename))
+            media = embed.image
         elif embed.thumbnail and embed.thumbnail.url:
-            url = embed.thumbnail.url
-            if not any(ext in urlsplit(url).path.lower() for ext in IMAGE_EXTENSIONS):
-                continue
-            filename = urlsplit(url).path.split("/")[-1]
-            images.append(EmbedImage(url, filename=filename))
+            media = embed.thumbnail
+        else:
+            continue
+        url = media.url
+        if not any(ext in urlsplit(url).path.lower() for ext in IMAGE_EXTENSIONS):
+            continue
+        # Fetch through Discord's media proxy rather than the original URL, which
+        # bots and webhooks can point anywhere (including internal addresses).
+        if not media.proxy_url:
+            continue
+        filename = urlsplit(url).path.split("/")[-1]
+        images.append(EmbedImage(media.proxy_url, filename=filename))
     return images
 
 
@@ -200,7 +210,14 @@ async def caption_image(base64_image, media_type):
             "X-Title": "image-captioner",
         },
     )
-    return response.choices[0].message.content
+    if not response.choices:
+        raise ValueError("Model returned no choices")
+    content = response.choices[0].message.content
+    if isinstance(content, list):
+        content = "".join(getattr(part, "text", "") for part in content)
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError(f"Model returned no caption text: {content!r}")
+    return content
 
 
 async def caption_images_from_message(images: list[ImageSource]):
@@ -317,6 +334,8 @@ async def on_message(message):
 @tree.command(
     name="captioner", description="Configure image captioner mode for this server"
 )
+@app_commands.guild_only()
+@app_commands.default_permissions(manage_guild=True)
 @app_commands.describe(
     mode="auto: caption all images automatically, command: only caption via the Describe Images command"
 )
@@ -329,7 +348,11 @@ async def on_message(message):
 async def captioner_config(
     interaction: discord.Interaction, mode: app_commands.Choice[str]
 ):
-    if not interaction.user.guild_permissions.manage_guild:
+    if (
+        interaction.guild_id is None
+        or not isinstance(interaction.user, discord.Member)
+        or not interaction.user.guild_permissions.manage_guild
+    ):
         await interaction.response.send_message(
             "You need the Manage Server permission to change this setting.",
             ephemeral=True,
