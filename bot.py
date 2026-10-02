@@ -21,6 +21,7 @@ load_dotenv()
 client = openrouter.OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
 CAPTION_MODEL = "~z-ai/glm-flash-latest"
 CAPTION_MAX_TOKENS = 500
+NON_RETRYABLE_STATUS_CODES = {401, 402, 403, 429}
 
 # Logging setup
 logger = logging.getLogger(__name__)
@@ -45,16 +46,45 @@ CONFIG_PATH = os.path.join(
 )
 
 
+_guild_config: dict | None = None
+
+
 def load_guild_config():
+    """Return the guild config, reading it from disk only the first time."""
+    global _guild_config
+    if _guild_config is not None:
+        return _guild_config
+
+    _guild_config = {}
     if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, "r") as f:
-            return json.load(f)
-    return {}
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError(f"expected a JSON object, got {type(data).__name__}")
+            _guild_config = data
+        except (OSError, ValueError) as e:
+            # Keep the bad file around rather than overwriting it on the next save
+            backup_path = CONFIG_PATH + ".corrupt"
+            logger.error(
+                f"Could not read {CONFIG_PATH} ({e}); moving it to {backup_path} "
+                f"and using default settings"
+            )
+            try:
+                os.replace(CONFIG_PATH, backup_path)
+            except OSError as move_error:
+                logger.error(f"Failed to move corrupt config: {move_error}")
+    return _guild_config
 
 
 def save_guild_config(config):
-    with open(CONFIG_PATH, "w") as f:
+    global _guild_config
+    # Write to a temp file and rename so a crash mid-write can't corrupt the config
+    tmp_path = CONFIG_PATH + ".tmp"
+    with open(tmp_path, "w") as f:
         json.dump(config, f, indent=2)
+    os.replace(tmp_path, CONFIG_PATH)
+    _guild_config = config
 
 
 def get_guild_mode(guild_id):
@@ -253,8 +283,12 @@ async def caption_images_from_message(images: list[ImageSource]):
             try:
                 explanation = await caption_image(base64_image, media_type)
             except openrouter.errors.OpenRouterError as e:
-                # Discord will sometimes send things openrouter things are pngs as non-pngs
-                if media_type != "image/png":
+                # Discord will sometimes send things openrouter things are pngs as non-pngs.
+                # Auth, credit, permission and rate-limit errors would just fail again.
+                if (
+                    media_type != "image/png"
+                    and e.status_code not in NON_RETRYABLE_STATUS_CODES
+                ):
                     logger.warning(
                         f"Provider error with {media_type} for image {idx + 1}, retrying as image/png: {e}"
                     )
@@ -304,6 +338,10 @@ async def on_message(message):
     except discord.NotFound:
         logger.info(f"Message {message.id} was deleted before processing")
         return
+    except discord.HTTPException as e:
+        # e.g. Forbidden without Read Message History. The cached message still
+        # picks up embeds from edit events, so carry on with it.
+        logger.warning(f"Could not re-fetch message {message.id}, using cached copy: {e}")
 
     # Find all image attachments and embed images in the message
     images = collect_images(message)
@@ -315,23 +353,32 @@ async def on_message(message):
         f"Found {len(images)} image(s) in message {message.id} from {message.author}"
     )
 
-    async with message.channel.typing():
-        explanations, error = await caption_images_from_message(images)
+    try:
+        async with message.channel.typing():
+            explanations, error = await caption_images_from_message(images)
+    except discord.HTTPException as e:
+        # Typing needs Send Messages, so a Forbidden here means we couldn't reply anyway
+        logger.warning(f"Could not start typing in channel {message.channel.id}: {e}")
+        return
 
-        if error:
-            await message.add_reaction("\u26a0\ufe0f")
-            return
-
-        # Send as plain text replies
-        replies = build_replies(explanations)
-
+    if error:
         try:
-            for reply in replies:
-                await message.reply(reply)
-            logger.info("Successfully sent reply")
-        except Exception as e:
-            logger.error(f"Failed to send reply: {e}")
-            traceback.print_exc()
+            await message.add_reaction("\u26a0\ufe0f")
+        except discord.HTTPException as e:
+            # Forbidden without Add Reactions; NotFound (Unknown Message) if deleted meanwhile
+            logger.warning(f"Could not add error reaction to message {message.id}: {e}")
+        return
+
+    # Send as plain text replies
+    replies = build_replies(explanations)
+
+    try:
+        for reply in replies:
+            await message.reply(reply)
+        logger.info("Successfully sent reply")
+    except discord.HTTPException as e:
+        # Replying to a message deleted meanwhile fails with a 400, not NotFound
+        logger.error(f"Failed to send reply: {e}")
 
 
 @tree.command(
@@ -362,7 +409,8 @@ async def captioner_config(
         )
         return
 
-    config = load_guild_config()
+    # Copy so the cached config only changes if the save succeeds
+    config = dict(load_guild_config())
     config[str(interaction.guild_id)] = mode.value
     save_guild_config(config)
 
@@ -385,7 +433,12 @@ async def describe_images(interaction: discord.Interaction, message: discord.Mes
         )
         return
 
-    await interaction.response.defer()
+    try:
+        await interaction.response.defer()
+    except discord.HTTPException as e:
+        # NotFound if the interaction already expired (not acknowledged within 3s)
+        logger.warning(f"Could not defer Describe Images interaction: {e}")
+        return
 
     logger.info(
         f"Describe command: {len(images)} image(s) in message {message.id} from {message.author}"
@@ -393,15 +446,19 @@ async def describe_images(interaction: discord.Interaction, message: discord.Mes
 
     explanations, error = await caption_images_from_message(images)
 
-    if error:
-        await interaction.followup.send(
-            "Something went wrong while captioning the images."
-        )
-        return
+    try:
+        if error:
+            await interaction.followup.send(
+                "Something went wrong while captioning the images."
+            )
+            return
 
-    replies = build_replies(explanations)
-    for reply in replies:
-        await interaction.followup.send(reply)
+        replies = build_replies(explanations)
+        for reply in replies:
+            await interaction.followup.send(reply)
+    except discord.HTTPException as e:
+        # The interaction token expires 15 minutes after the command was used
+        logger.error(f"Failed to send Describe Images follow-up: {e}")
 
 
 def main():
@@ -409,6 +466,9 @@ def main():
     TOKEN = os.getenv("DISCORD_TOKEN")
     if not TOKEN:
         logger.error("Error: DISCORD_TOKEN not found in environment variables!")
+        sys.exit(1)
+    if not os.getenv("OPENROUTER_API_KEY"):
+        logger.error("Error: OPENROUTER_API_KEY not found in environment variables!")
         sys.exit(1)
 
     bot.run(TOKEN)
