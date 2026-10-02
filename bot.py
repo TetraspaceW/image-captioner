@@ -1,4 +1,5 @@
 import os
+import sys
 import asyncio
 import json
 import discord
@@ -18,6 +19,8 @@ load_dotenv()
 
 # Configure OpenRouter
 client = openrouter.OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
+CAPTION_MODEL = "~z-ai/glm-flash-latest"
+CAPTION_MAX_TOKENS = 500
 
 # Logging setup
 logger = logging.getLogger(__name__)
@@ -152,7 +155,7 @@ def _collect_image_attachments(attachments) -> list[ImageSource]:
 def _collect_embed_images(embeds) -> list[ImageSource]:
     images: list[ImageSource] = []
     for embed in embeds:
-        logger.info(f"Embed: type={embed.type}, content={embed.to_dict()}")
+        logger.debug(f"Embed: type={embed.type}, content={embed.to_dict()}")
         if embed.image and embed.image.url:
             media = embed.image
         elif embed.thumbnail and embed.thumbnail.url:
@@ -185,7 +188,7 @@ def collect_images(message: discord.Message) -> list[ImageSource]:
 async def caption_image(base64_image, media_type):
     response = await asyncio.to_thread(
         client.chat.send,
-        model="~z-ai/glm-flash-latest",
+        model=CAPTION_MODEL,
         messages=[
             {
                 "role": "user",
@@ -203,7 +206,7 @@ async def caption_image(base64_image, media_type):
                 ],
             }
         ],
-        max_tokens=500,
+        max_tokens=CAPTION_MAX_TOKENS,
         reasoning={"effort": "minimal", "exclude": True},
         http_headers={
             "HTTP-Referer": "https://github.com/TetraspaceW/image-captioner",
@@ -269,7 +272,7 @@ async def caption_images_from_message(images: list[ImageSource]):
                 f"Status code: {getattr(e, 'raw_response', None) and e.raw_response.status_code}"
             )
             logger.error(
-                f"Request params: model=~z-ai/glm-flash-latest, max_tokens=500, "
+                f"Request params: model={CAPTION_MODEL}, max_tokens={CAPTION_MAX_TOKENS}, "
                 f"image_content_type={image.content_type}, image_size={image.size}, "
                 f"base64_length={len(base64_image)}"
             )
@@ -406,7 +409,7 @@ def main():
     TOKEN = os.getenv("DISCORD_TOKEN")
     if not TOKEN:
         logger.error("Error: DISCORD_TOKEN not found in environment variables!")
-        exit(1)
+        sys.exit(1)
 
     bot.run(TOKEN)
 
