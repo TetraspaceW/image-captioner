@@ -193,7 +193,15 @@ def _collect_embed_images(embeds) -> list[ImageSource]:
         else:
             continue
         url = media.url
-        if not any(ext in urlsplit(url).path.lower() for ext in IMAGE_EXTENSIONS):
+        # Go by the content type Discord reports where there is one: tweet embeds
+        # use extensionless image URLs, so the extension check alone drops them.
+        if media.content_type:
+            is_image = media.content_type.startswith("image/")
+        else:
+            is_image = any(
+                ext in urlsplit(url).path.lower() for ext in IMAGE_EXTENSIONS
+            )
+        if not is_image:
             continue
         # Fetch through Discord's media proxy rather than the original URL, which
         # bots and webhooks can point anywhere (including internal addresses).
